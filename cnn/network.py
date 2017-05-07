@@ -115,6 +115,9 @@ class Network(object):
                 bias = tf.nn.bias_add(conv, biases)
                 return tf.nn.relu(bias, name=scope.name)
             return tf.nn.bias_add(conv, biases, name=scope.name)
+    @layer
+    def norm(self, input, name):
+        return input
 
     @layer
     def relu(self, input, name):
@@ -199,8 +202,75 @@ class Network(object):
     def dropout(self, input, keep_prob, name):
         return tf.nn.dropout(input, keep_prob, name=name)
 
+    @layer
+    def add(self, input, name):
+        assert len(input) == 2
+        return tf.add(input[0], input[1], name=name)
+
+    @layer
+    def mul(self, input, num_out, name):
+        with tf.variable_scope(name) as scope:
+            # only use the first input
+            if isinstance(input, tuple):
+                input = input[0]
+
+            input_shape = input.get_shape()
+            if input_shape.ndims == 4:
+                dim = 1
+                for d in input_shape[1:].as_list():
+                    dim *= d
+                feed_in = tf.reshape(tf.transpose(input, [0, 3, 1, 2]), [-1, dim])
+            else:
+                feed_in, dim = (input, int(input_shape[-1]))
+
+            init_weights = tf.truncated_normal_initializer(0.0, stddev=0.01)
+
+            weights = self.make_var('weights', [dim, num_out], init_weights)
+            return tf.matmul(input, weights, name=name)
+
     def set_cost(self, cost):
         self.cost = cost
 
     def set_optimizer(self, optimizer):
         self.opt = optimizer
+
+
+    def inception(self, input, c_conv1, c_conv2_1, c_conv2_2, c_conv3_1, c_conv3_2, c_conv4, name):
+        # inceiption3a
+        (self.feed(input)
+         .conv(1, 1, c_conv1, 1, 1, name=name + '_conv1'))
+        (self.feed(input)
+         .conv(1, 1, c_conv2_1, 1, 1, name=name + '_conv2_1')
+         .conv(3, 3, c_conv2_2, 1, 1, name=name + '_conv2_2'))
+        (self.feed(input)
+         .conv(1, 1, c_conv3_1, 1, 1, name=name + '_conv3_1')
+         .conv(5, 5, c_conv3_2, 1, 1, name=name + '_conv3_2'))
+        (self.feed(input)
+         .max_pool(3, 3, 1, 1, name=name + '_pool')
+         .conv(1, 1, c_conv4, 1, 1, name=name + '_conv3'))
+        (self.feed(name + '_conv1', name + '_conv2_2', name + '_conv3_2', name + '_conv3')
+         .concat(3, name=name))
+
+    def residual_v1(self, input, c_conv1, c_conv2, k, name):
+        (self.feed(input)
+         .conv(3,3, c_conv1, k,k, name= name + '_conv1')
+         .conv(3,3, c_conv2, 1,1, name= name + '_conv2'))
+        if k == 1:
+            (self.feed(input, name + '_conv2').add(name=name))
+        else:
+            (self.feed(input).mul(c_conv2, name= name+'_intermediate'))
+            (self.feed(name+ '_intermediate', name + '_conv2').add(name=name))
+
+
+    def residual_v2(self, input, c_conv1, c_conv2, c_conv3, k, name):
+        (self.feed(input)
+         .conv(1, 1, c_conv1, k, k, name=name + '_conv1')
+         .conv(3, 3, c_conv2, 1, 1, name=name + '_conv2')
+         .conv(1, 1, c_conv3, 1, 1, name=name + '_conv3'))
+
+        if k == 1:
+            (self.feed(input, name + '_conv2').add(name=name))
+        else:
+            (self.feed(input).mul(c_conv3, name=name + '_intermediate'))
+            (self.feed(name + '_intermediate', name + '_conv2').add(name=name))
+
