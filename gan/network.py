@@ -115,6 +115,7 @@ class Network(object):
                 bias = tf.nn.bias_add(conv, biases)
                 return tf.nn.relu(bias, name=scope.name)
             return tf.nn.bias_add(conv, biases, name=scope.name)
+
     @layer
     def norm(self, input, name):
         return input
@@ -164,8 +165,8 @@ class Network(object):
         return tf.concat(concat_dim=axis, values=inputs, name=name)
 
     @layer
-    def fc(self, input, num_out, name, relu=True, trainable=True):
-        with tf.variable_scope(self.name + name) as scope:
+    def fc(self, input, num_out, name, relu=True, trainable=True, reuse=False):
+        with tf.variable_scope(self.name + name, reuse=reuse) as scope:
             # only use the first input
             if isinstance(input, tuple):
                 input = input[0]
@@ -179,11 +180,18 @@ class Network(object):
             else:
                 feed_in, dim = (input, int(input_shape[-1]))
 
-            init_weights = tf.truncated_normal_initializer(0.0, stddev=0.01)
-            init_biases = tf.constant_initializer(0.0)
+            init_weights = None
+            init_biases = None
+
+            if reuse is False:
+                init_weights = tf.truncated_normal_initializer(0.0, stddev=0.01)
+                init_biases = tf.constant_initializer(0.0)
 
             weights = self.make_var('weights', [dim, num_out], init_weights, trainable)
             biases = self.make_var('biases', [num_out], init_biases, trainable)
+
+            print(weights)
+            print(biases)
 
             op = tf.nn.relu_layer if relu else tf.nn.xw_plus_b
             fc = op(feed_in, weights, biases, name=scope.name)
@@ -205,6 +213,10 @@ class Network(object):
     @layer
     def reshape(self, input, shape, name):
         return tf.reshape(input, shape, name=name)
+
+    @layer
+    def rename(self, input, name):
+        return input
 
     @layer
     def add(self, input, name):
@@ -232,22 +244,17 @@ class Network(object):
             weights = self.make_var('weights', [dim, num_out], init_weights)
             return tf.matmul(input, weights, name=name)
 
-    @layer
-    def batch_normalization(self, input, name, relu=True, is_training=False):
-        """contribution by miraclebiu"""
-        if relu:
-            temp_layer = tf.contrib.layers.batch_norm(input, scale=True, center=True, is_training=is_training,
-                                                      scope=name)
-            return tf.nn.relu(temp_layer)
-        else:
-            return tf.contrib.layers.batch_norm(input, scale=True, center=True, is_training=is_training, scope=name)
+    def set_cost_gen(self, cost):
+        self.cost_gen = cost
 
-    def set_cost(self, cost):
-        self.cost = cost
+    def set_cost_dis(self, cost):
+        self.cost_dis = cost
 
-    def set_optimizer(self, optimizer):
-        self.opt = optimizer
+    def set_optimizer_gen(self, optimizer):
+        self.opt_gen = optimizer
 
+    def set_optimizer_dis(self, optimizer):
+        self.opt_dis = optimizer
 
     def inception(self, input, c_conv1, c_conv2_1, c_conv2_2, c_conv3_1, c_conv3_2, c_conv4, name):
         # inceiption3a
