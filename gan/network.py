@@ -88,6 +88,12 @@ class Network(object):
     def validate_padding(self, padding):
         assert padding in ('SAME', 'VALID')
 
+    def get_variables(self, name):
+        with tf.variable_scope(self.name + name, reuse=True) as scope:
+            kernel = tf.get_variable('weights')
+            biases = tf.get_variable('biases')
+        return [kernel, biases]
+
     @layer
     def conv(self, input, k_h, k_w, c_o, s_h, s_w, name, relu=True, padding=DEFAULT_PADDING,
              group=1, trainable=True):

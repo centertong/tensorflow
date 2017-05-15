@@ -1,21 +1,54 @@
 import tensorflow as tf
-from tensorflow.examples.tutorials.mnist import input_data
 import numpy as np
-#import matplotlib.pyplot as plt
-#import matplotlib.gridspec as gridspec
+from gan.network import Network
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+
+
+class mnist_gan(Network):
+    def __init__(self, X_size, Y_size , trainable=True, name=None):
+        self.name = name
+        self.inputs = []
+        self.data = tf.placeholder(tf.float32, shape = [None] + X_size)
+        self.target = tf.placeholder(tf.float32, shape = [None] + Y_size)
+        self.layers = {'data':self.data, 'target':self.target}
+        self.trainable = trainable
+        self.setup()
+        self.saver = tf.train.Saver()
+
+    def setup(self):
+        #generator
+        (self.feed('target')
+         .fc(128, name='gen_fc')
+         .fc(784, name='gen_log_prob', relu=False)
+         .sigmoid(name='gen_prob'))
+
+        #discriminator
+        (self.feed('data')
+         .fc(128, name='dis_fc')
+         .fc(1, name='dis_prob', relu=False)
+         .rename(name='real_dis'))
+
+        (self.feed('gen_prob')
+         .fc(128, name='dis_fc', reuse=True)
+         .fc(1, name='dis_prob', relu=False, reuse=True)
+         .rename(name='gen_dis'))
+
+
+from tensorflow.examples.tutorials.mnist import input_data
 import os
 
+mnist = input_data.read_data_sets("../dataset/MNIST/", one_hot=True)
 
-mb_size = 32
-X_dim = 784
-z_dim = 64
-h_dim = 128
-lr = 1e-3
+learning_rate = 0.001
+training_iters = 100000
+batch_size = 32
+display_step = 10
 d_steps = 3
 
-mnist = input_data.read_data_sets('../dataset/MNIST/', one_hot=True)
+def sample_z(m, n):
+    return np.random.uniform(-1., 1., size=[m, n])
 
-"""
 def plot(samples):
     fig = plt.figure(figsize=(4, 4))
     gs = gridspec.GridSpec(4, 4)
@@ -31,98 +64,63 @@ def plot(samples):
 
     return fig
 
-"""
 
+def train(net, sess):
+    sess.run(init)
+    if os.path.exists("../learn_param/mnist_gan.ckpt.meta"):
+        net.load("../learn_param/mnist_gan.ckpt", sess, True)
 
-def xavier_init(size):
-    in_dim = size[0]
-    xavier_stddev = 1. / tf.sqrt(in_dim / 2.)
-    return tf.random_normal(shape=size, stddev=xavier_stddev)
+    step = 1
+    i = 0
+    while step < training_iters:
+        D_loss_curr = None
+        for _ in range(d_steps):
+            X_mb, _ = mnist.train.next_batch(batch_size)
+            z_mb = sample_z(batch_size, 64)
 
+            _, D_loss_curr = sess.run(
+                [net.opt_dis, net.cost_dis],
+                feed_dict={net.data: X_mb, net.target: z_mb}
+            )
 
-X = tf.placeholder(tf.float32, shape=[None, X_dim])
-z = tf.placeholder(tf.float32, shape=[None, z_dim])
+        X_mb, _ = mnist.train.next_batch(batch_size)
+        z_mb = sample_z(batch_size, 64)
 
-D_W1 = tf.Variable(xavier_init([X_dim, h_dim]))
-D_b1 = tf.Variable(tf.zeros(shape=[h_dim]))
-D_W2 = tf.Variable(xavier_init([h_dim, 1]))
-D_b2 = tf.Variable(tf.zeros(shape=[1]))
-
-G_W1 = tf.Variable(xavier_init([z_dim, h_dim]))
-G_b1 = tf.Variable(tf.zeros(shape=[h_dim]))
-G_W2 = tf.Variable(xavier_init([h_dim, X_dim]))
-G_b2 = tf.Variable(tf.zeros(shape=[X_dim]))
-
-theta_G = [G_W1, G_W2, G_b1, G_b2]
-theta_D = [D_W1, D_W2, D_b1, D_b2]
-
-
-def sample_z(m, n):
-    return np.random.uniform(-1., 1., size=[m, n])
-
-
-def generator(z):
-    G_h1 = tf.nn.relu(tf.matmul(z, G_W1) + G_b1)
-    G_log_prob = tf.matmul(G_h1, G_W2) + G_b2
-    G_prob = tf.nn.sigmoid(G_log_prob)
-    return G_prob
-
-
-def discriminator(x):
-    D_h1 = tf.nn.relu(tf.matmul(x, D_W1) + D_b1)
-    out = tf.matmul(D_h1, D_W2) + D_b2
-    #out_prob = tf.nn.sigmoid(out)
-    return out
-
-
-G_sample = generator(z)
-
-D_real = discriminator(X)
-D_fake = discriminator(G_sample)
-
-D_loss = 0.5 * (tf.reduce_mean((D_real - 1)**2) + tf.reduce_mean(D_fake**2))
-G_loss = 0.5 * tf.reduce_mean((D_fake - 1)**2)
-
-D_solver = (tf.train.AdamOptimizer(learning_rate=lr)
-            .minimize(D_loss, var_list=theta_D))
-G_solver = (tf.train.AdamOptimizer(learning_rate=lr)
-            .minimize(G_loss, var_list=theta_G))
-
-sess = tf.Session()
-sess.run(tf.global_variables_initializer())
-
-if not os.path.exists('test/'):
-    os.makedirs('test/')
-
-i = 0
-
-for it in range(1000000):
-    for _ in range(d_steps):
-        X_mb, _ = mnist.train.next_batch(mb_size)
-        z_mb = sample_z(mb_size, z_dim)
-
-        _, D_loss_curr = sess.run(
-            [D_solver, D_loss],
-            feed_dict={X: X_mb, z: z_mb}
+        _, G_loss_curr = sess.run(
+            [net.opt_gen, net.cost_gen],
+            feed_dict={net.data: X_mb, net.target: sample_z(batch_size, 64)}
         )
 
-    X_mb, _ = mnist.train.next_batch(mb_size)
-    z_mb = sample_z(mb_size, z_dim)
+        if step % 1000 == 0:
+            print('Iter: {}; D_loss: {:.4}; G_loss: {:.4}'
+                  .format(step, D_loss_curr, G_loss_curr))
+            #tmp_sample = sample_z(16, 64)
 
-    _, G_loss_curr = sess.run(
-        [G_solver, G_loss],
-        feed_dict={X: X_mb, z: sample_z(mb_size, z_dim)}
-    )
+            samples = sess.run(net.get_output('gen_prob'), feed_dict={net.target: sample_z(16, 64)})
+            fig = plot(samples)
+            plt.savefig('../test/test_{}.png'
+                        .format(str(i).zfill(3)), bbox_inches='tight')
+            i += 1
+            plt.close(fig)
 
-    if it % 1000 == 0:
-        print('Iter: {}; D_loss: {:.4}; G_loss: {:.4}'
-              .format(it, D_loss_curr, G_loss_curr))
-        """
-        samples = sess.run(G_sample, feed_dict={z: sample_z(16, z_dim)})
+        step += 1
+    save_path = net.saver.save(sess, "../learn_param/mnist_gan.ckpt")
+    print("Model saved infile : {}".format(save_path))
 
-        fig = plot(samples)
-        plt.savefig('test/{}.png'
-                    .format(str(i).zfill(3)), bbox_inches='tight')
-        i += 1
-        plt.close(fig)
-        """
+if __name__ == '__main__':
+    net = mnist_gan(X_size=[784], Y_size=[64], name='mnist')
+
+    gen_var = net.get_variables('gen_fc') + net.get_variables('gen_log_prob')
+    dis_var = net.get_variables('dis_fc') + net.get_variables('dis_prob')
+
+    net.set_cost_gen(0.5 * tf.reduce_mean((net.get_output('gen_dis') - 1)**2))
+    net.set_optimizer_gen(tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(net.cost_gen, var_list= gen_var))
+
+    net.set_cost_dis(0.5 * (tf.reduce_mean((net.get_output('real_dis') - 1)**2) + tf.reduce_mean(net.get_output('gen_dis')**2)))
+    net.set_optimizer_dis(tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(net.cost_dis, var_list= dis_var))
+
+    init = tf.global_variables_initializer()
+    with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
+        for i in range(10):
+            train(net, sess)
+            print("complete {} iteration".format(i+1))
