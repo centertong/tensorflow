@@ -96,13 +96,13 @@ class Network(object):
 
     @layer
     def conv(self, input, k_h, k_w, c_o, s_h, s_w, name, relu=True, padding=DEFAULT_PADDING,
-             group=1, trainable=True):
+             group=1, trainable=True, reuse = False):
         self.validate_padding(padding)
         c_i = input.get_shape().as_list()[-1]
         assert c_i % group == 0
         assert c_o % group == 0
         convolve = lambda i, k: tf.nn.conv2d(i, k, [1, s_h, s_w, 1], padding=padding)
-        with tf.variable_scope(self.name + name) as scope:
+        with tf.variable_scope(self.name + name, reuse=reuse) as scope:
 
             init_weights = tf.truncated_normal_initializer(0.0, stddev=0.01)
             init_biases = tf.constant_initializer(0.0)
@@ -123,12 +123,40 @@ class Network(object):
             return tf.nn.bias_add(conv, biases, name=scope.name)
 
     @layer
-    def norm(self, input, name):
-        return input
+    def deconv(self, input, k_h, k_w, c_o, s_h, s_w, name, relu=True, padding=DEFAULT_PADDING,
+             trainable=True, reuse = False):
+        c_n = -1
+        c_h = input.get_shape().as_list()[1] * s_h
+        c_w = input.get_shape().as_list()[2] * s_w
+        c_i = input.get_shape().as_list()[-1]
+        deconvolve = lambda i, k: tf.nn.conv2d_transpose(i, k, output_shape= [c_n, c_h, c_w, c_o],strides= [1, s_h, s_w, 1], padding=padding)
+        with tf.variable_scope(self.name + name, reuse= reuse) as scope:
+
+            init_weights = tf.truncated_normal_initializer(0.0, stddev=0.02)
+            init_biases = tf.constant_initializer(0.0)
+            kernel = self.make_var('weights', [k_h, k_w, c_o, c_i], init_weights,
+                                   trainable)
+            biases = self.make_var('biases', [c_o], init_biases, trainable)
+
+            deconv = deconvolve(input, kernel)
+
+            if relu:
+                bias = tf.nn.bias_add(deconv, biases)
+                return tf.nn.relu(bias, name=scope.name)
+            return tf.nn.bias_add(deconv, biases, name=scope.name)
+
+    @layer
+    def tanh(self, input, name):
+        return tf.tanh(input, name=name)
 
     @layer
     def relu(self, input, name):
         return tf.nn.relu(input, name=name)
+
+    @layer
+    def lrelu(self, input, name, leak = 0.2):
+        return tf.maximum(input, leak*input, name=name)
+
 
     @layer
     def sigmoid(self, input, name):
@@ -154,8 +182,38 @@ class Network(object):
 
 
     @layer
-    def bn(self, input, mean, var, offset, scale, epsilon, name):
-        return tf.nn.batch_normalization(input,mean=mean, variance=var, offset= offset, scale=scale, variance_epsilon=epsilon, name=name)
+    def bn(self, input, n_out, name, phase_train=True):
+        """
+            Batch normalization on convolutional maps.
+            Ref.: http://stackoverflow.com/questions/33949786/how-could-i-use-batch-normalization-in-tensorflow
+            Args:
+                x:           Tensor, 4D BHWD input maps
+                n_out:       integer, depth of input maps
+                phase_train: boolean tf.Varialbe, true indicates training phase
+                scope:       string, variable scope
+            Return:
+                normed:      batch-normalized maps
+            """
+        with tf.variable_scope(self.name + name):
+            beta = tf.Variable(tf.constant(0.0, shape=[n_out]),
+                               name='beta', trainable=True)
+            gamma = tf.Variable(tf.constant(1.0, shape=[n_out]),
+                                name='gamma', trainable=True)
+            batch_mean, batch_var = tf.nn.moments(input, [0, 1, 2], name='moments')
+            ema = tf.train.ExponentialMovingAverage(decay=0.5)
+
+            def mean_var_with_update():
+                ema_apply_op = ema.apply([batch_mean, batch_var])
+                with tf.control_dependencies([ema_apply_op]):
+                    return tf.identity(batch_mean), tf.identity(batch_var)
+
+            #mean, var = tf.cond(phase_train,
+            #                    mean_var_with_update,
+            #                    lambda: (ema.average(batch_mean), ema.average(batch_var)))
+            mean, var = mean_var_with_update()
+
+            normed = tf.nn.batch_normalization(input, mean, var, beta, gamma, 1e-3)
+        return normed
 
     @layer
     def lrn(self, input, radius, alpha, beta, name, bias=1.0):
@@ -186,12 +244,9 @@ class Network(object):
             else:
                 feed_in, dim = (input, int(input_shape[-1]))
 
-            init_weights = None
-            init_biases = None
 
-            if reuse is False:
-                init_weights = tf.truncated_normal_initializer(0.0, stddev=0.01)
-                init_biases = tf.constant_initializer(0.0)
+            init_weights = tf.truncated_normal_initializer(0.0, stddev=0.01)
+            init_biases = tf.constant_initializer(0.0)
 
             weights = self.make_var('weights', [dim, num_out], init_weights, trainable)
             biases = self.make_var('biases', [num_out], init_biases, trainable)

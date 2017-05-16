@@ -19,10 +19,10 @@ class AlexNet(Network):
         (self.feed('data')
          .conv(11,11,96,4,4, name='conv1', padding='VALID') #padding = 0
          .max_pool(3,3,2,2, padding='VALID', name= 'pool1')
-         .norm(name='norm1')
+         .bn(96, name='norm1')
          .conv(5,5,256,1,1, name='conv2') #padding = 2
          .max_pool(3,3,2,2, padding='VALID', name='pool2')
-         .norm(name='norm2')
+         .bn(256, name='norm2')
          .conv(3,3,384,1,1, name='conv3') #padding = 1
          .conv(3,3,384,1,1, name='conv4') #padding = 1
          .conv(3,3,256,1,1, name='conv5') #padding = 1
