@@ -13,5 +13,5 @@ Implemented
     }
 
     GAN : {
-
+            Basic GAN,
     }
