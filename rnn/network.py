@@ -229,6 +229,10 @@ class Network(object):
         return tf.reshape(input, shape, name=name)
 
     @layer
+    def shape(self, input, name):
+        return tf.shape(input, name=name)
+
+    @layer
     def transpose(self, input, shape, name):
         return tf.transpose(input, shape, name=name)
 
@@ -269,12 +273,7 @@ class Network(object):
         self.opt = optimizer
 
     @rnn_layer
-    def rnn(self, input, n_hidden, n_layer, name, keep_prob = 1., time_major = False, only_last = False):
-        state = None
-        if isinstance(input, list):
-            state = input[1]
-            input = input[0]
-
+    def rnn(self, input, n_hidden, n_layer, name, keep_prob = 1., time_major = False, only_last = False, initial_state=None):
         with tf.variable_scope(self.name + name) as scope:
             cell = tf.contrib.rnn.BasicRNNCell(n_hidden)
             cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=keep_prob)
@@ -283,7 +282,7 @@ class Network(object):
                 cell = tf.contrib.rnn.MultiRNNCell([cell] * n_layer)
 
             # tf.nn.dynamic_rnn 함수를 이용해 순환 신경망을 만듭니다.
-            outputs, states = tf.nn.dynamic_rnn(cell, input,initial_state=state, dtype=tf.float32, time_major=time_major)
+            outputs, states = tf.nn.dynamic_rnn(cell, input,initial_state=initial_state, dtype=tf.float32, time_major=time_major)
 
             if only_last:
                 return outputs[:,-1], states

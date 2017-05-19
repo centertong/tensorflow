@@ -72,13 +72,20 @@ class Seq2Seq(Network):
 
     def setup(self):
         (self.feed('data_inc')
-         .rnn(n_hidden, n_layer=1, name='incoder'))
+         .rnn(n_hidden, n_layer=3, name='incoder'))
 
-        (self.feed('data_dec', 'incoder_s')
-         .rnn(n_hidden, n_layer=1, name='decoder')
+        (self.feed('data_dec')
+         .rnn(n_hidden, n_layer=3, name='decoder', initial_state=self.get_output('incoder_s')))
+
+        (self.feed('decoder')
+         .shape(name='decoder_shape'))
+
+        time_steps = self.get_output('decoder_shape')[1]
+
+        (self.feed('decoder')
          .reshape([-1, n_hidden], name='decoder_reshape')
          .fc(n_classes, name='seq_reshape')
-         .reshape([-1, 5, n_classes], name='seq'))
+         .reshape([-1, time_steps, n_classes], name='seq'))
 
 #########
 # 신경망 모델 학습
@@ -98,11 +105,8 @@ def train(net, sess):
         sess.run(net.opt, feed_dict= feed_dict)
 
         if step % display_step == 0:
-            acc = sess.run(accuracy, feed_dict=feed_dict)
-            loss = sess.run(net.cost, feed_dict=feed_dict)
-            output = sess.run(prediction, feed_dict=feed_dict)
-            print(acc, loss)
-            print(output)
+            loss , result= sess.run([net.cost, prediction], feed_dict=feed_dict)
+            print(loss)
 
         step += 1
     save_path = net.saver.save(sess, "../learn_param/seq2seq.ckpt")
@@ -115,15 +119,65 @@ def train(net, sess):
 
 if __name__ == '__main__':
     net = Seq2Seq(X_size=[None, n_input], Y_size=[None, n_input], Z_size=[None], name='seq2seq')
+
     net.set_cost(tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=net.get_output('seq'), labels=net.target)))
     net.set_optimizer(tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(net.cost))
 
-    prediction = tf.argmax(net.get_output('seq'), 1)
-    prediction_check = tf.equal(prediction, tf.argmax(net.target, 1))
-    accuracy = tf.reduce_mean(tf.cast(prediction_check, tf.float32))
+    prediction = tf.argmax(net.get_output('seq'), 2)
 
     init = tf.global_variables_initializer()
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
         for i in range(10):
             train(net, sess)
             print("complete {} iteration".format(i + 1))
+
+
+
+#########
+# 공부!!
+######
+# 시퀀스 데이터를 받아 다음 결과를 예측하고 디코딩하는 함수
+def decode(seq_data):
+    prediction = tf.argmax(net.get_output('seq'), 2)
+
+    input_batch, output_batch, target_batch = make_batch([seq_data])
+
+    result = sess.run(prediction,
+                      feed_dict={net.data_inc: input_batch,
+                                 net.data_dec: output_batch,
+                                 net.target: target_batch})
+
+    decode_seq = [[char_arr[i] for i in dec] for dec in result][0]
+
+    return decode_seq
+
+
+# 한 번에 전체를 예측하고 E 이후의 글자를 잘라 단어를 완성
+def decode_at_once(seq_data):
+    seq = decode(seq_data)
+    end = seq.index('E')
+    seq = ''.join(seq[:end])
+
+    return seq
+
+
+# 시퀀스 데이터를 받아 다음 한글자를 예측하고,
+# 종료 심볼인 E 가 나올때까지 점진적으로 예측하여 최종 결과를 만드는 함수
+def decode_step_by_step(seq_data):
+    decode_seq = ''
+    current_seq = ''
+
+    while current_seq != 'E':
+        decode_seq = decode(seq_data)
+        seq_data = [seq_data[0], ''.join(decode_seq)]
+        current_seq = decode_seq[-1]
+
+    return decode_seq
+
+# 결과를 모르므로 빈 시퀀스 값인 P로 값을 채웁니다.
+seq_data = ['word', 'PPPP']
+print('word ->', decode_at_once(seq_data))
+
+
+seq_data = ['word', '']
+print('word ->', decode_step_by_step(seq_data))
