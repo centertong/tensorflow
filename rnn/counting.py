@@ -18,7 +18,8 @@ dic_len = len(num_dic)
 # 다음 배열은 입력값과 출력값으로 다음처럼 사용할 것 입니다.
 # 123 -> X, 4 -> Y
 # 234 -> X, 5 -> Y
-seq_data = ['1234', '2345', '3456', '4567', '5678', '6789', '7890']
+seq_data = ['1234', '2345', '3456', '4567', '5678', '6789', '7890', '8901']
+seq_data2 = ['123', '234', '345', '456', '567', '678', '789', '890', '901']
 
 
 # 위의 데이터에서 X,Y 값을 뽑아 one-hot 인코딩을 한 뒤 배치데이터로 만드는 함수
@@ -81,8 +82,11 @@ class counting_RNN(Network):
 
     def setup(self):
         (self.feed('data')
-         .rnn(n_hidden, n_layer= 1, name='rnn')
-         .fc(n_classes, name='fc'))
+         #.transpose([1,0,2], name='data_trans')
+         #.rnn(n_hidden, n_layer= 1, name='rnn', time_major=True)
+         .rnn(n_hidden, n_layer=3, name='rnn')
+         .fc(n_classes, name='fc')
+         .softmax(name='score'))
 
 
 #########
@@ -96,28 +100,39 @@ def train(net, sess):
     step = 1
 
     x_batch, y_batch = one_hot_seq(seq_data)
+    x_batch2, y_batch2 = one_hot_seq(seq_data2)
 
     while step < n_iteration:
         feed_dict = {net.data: x_batch, net.target: y_batch}
+        feed_dict2 = {net.data: x_batch2, net.target: y_batch2}
+
 
         sess.run(net.opt, feed_dict= feed_dict)
+        sess.run(net.opt, feed_dict=feed_dict2)
 
         if step % display_step == 0:
             acc = sess.run(accuracy, feed_dict=feed_dict)
             loss = sess.run(net.cost, feed_dict=feed_dict)
+            output = sess.run(prediction, feed_dict=feed_dict)
             print(acc, loss)
+            print(output)
+            acc = sess.run(accuracy, feed_dict=feed_dict2)
+            loss = sess.run(net.cost, feed_dict=feed_dict2)
+            output = sess.run(prediction, feed_dict=feed_dict2)
+            print(acc, loss)
+            print(output)
         step += 1
     save_path = net.saver.save(sess, "../learn_param/counting_rnn.ckpt")
     print("Model saved infile : {}".format(save_path))
 
 
 if __name__ == '__main__':
-    net = counting_RNN(X_size=[n_steps, n_input], Y_size=[n_classes], name='counting')
+    net = counting_RNN(X_size=[None, n_input], Y_size=[n_classes], name='counting')
     net.set_cost(tf.reduce_mean(
         tf.nn.softmax_cross_entropy_with_logits(logits=net.get_output('fc'), labels=net.target)))
     net.set_optimizer(tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(net.cost))
 
-    prediction = tf.argmax(net.get_output('fc'), 1)
+    prediction = tf.argmax(net.get_output('score'), 1)
     prediction_check = tf.equal(prediction, tf.argmax(net.target, 1))
     accuracy = tf.reduce_mean(tf.cast(prediction_check, tf.float32))
 

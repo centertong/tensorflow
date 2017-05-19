@@ -229,6 +229,10 @@ class Network(object):
         return tf.reshape(input, shape, name=name)
 
     @layer
+    def transpose(self, input, shape, name):
+        return tf.transpose(input, shape, name=name)
+
+    @layer
     def rename(self, input, name):
         return input
 
@@ -275,7 +279,8 @@ class Network(object):
         # tf.nn.dynamic_rnn 함수를 이용해 순환 신경망을 만듭니다.
         outputs, states = tf.nn.dynamic_rnn(cell, input, dtype=tf.float32, time_major=time_major)
 
-        return outputs[:,-1,:], states
+        #return outputs[-1], states
+        return outputs[:,-1], states
 
 
 
