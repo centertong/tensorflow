@@ -175,9 +175,9 @@ def decode_step_by_step(seq_data):
     return decode_seq
 
 # 결과를 모르므로 빈 시퀀스 값인 P로 값을 채웁니다.
-seq_data = ['word', 'PPPP']
-print('word ->', decode_at_once(seq_data))
+seq_data2 = ['word', 'PPPP']
+print('word ->', decode_at_once(seq_data2))
 
 
-seq_data = ['word', '']
-print('word ->', decode_step_by_step(seq_data))
+seq_data3 = ['word', '']
+print('word ->', decode_step_by_step(seq_data3))
