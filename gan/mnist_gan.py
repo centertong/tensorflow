@@ -27,12 +27,14 @@ class mnist_gan(Network):
         (self.feed('data')
          .fc(128, name='dis_fc')
          .fc(1, name='dis_prob', relu=False)
-         .rename(name='real_dis'))
+         .sigmoid(name='real_dis'))
+         #.rename(name='real_dis'))
 
         (self.feed('gen_prob')
          .fc(128, name='dis_fc', reuse=True)
          .fc(1, name='dis_prob', relu=False, reuse=True)
-         .rename(name='gen_dis'))
+         .sigmoid(name='gen_dis'))
+         #.rename(name='gen_dis'))
 
 
 from tensorflow.examples.tutorials.mnist import input_data
@@ -113,11 +115,32 @@ if __name__ == '__main__':
     gen_var = net.get_variables('gen_fc') + net.get_variables('gen_log_prob')
     dis_var = net.get_variables('dis_fc') + net.get_variables('dis_prob')
 
+
+    # GAN cost function 정의 시 주의사항 : network에서 마지막 layer에 Sigmoid 유무를 잘 확인하자.
+    # 1,2 는 둘다 Sigmoid가 필요
+    # 3은 discriminator에서는 불필요 (왜냐하면 cost 함수에 sigmoid를 포함하고 있기 때문이다.)
+
+    """
     net.set_cost_gen(0.5 * tf.reduce_mean((net.get_output('gen_dis') - 1)**2))
     net.set_optimizer_gen(tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(net.cost_gen, var_list= gen_var))
-
     net.set_cost_dis(0.5 * (tf.reduce_mean((net.get_output('real_dis') - 1)**2) + tf.reduce_mean(net.get_output('gen_dis')**2)))
     net.set_optimizer_dis(tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(net.cost_dis, var_list= dis_var))
+    """
+
+    net.set_cost_gen(tf.reduce_mean(tf.log(net.get_output('gen_dis'))))
+    net.set_optimizer_gen(tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(-net.cost_gen, var_list=gen_var))
+    net.set_cost_dis(tf.reduce_mean(tf.log(net.get_output('real_dis')) + tf.log(1 - net.get_output('gen_dis'))))
+    net.set_optimizer_dis(tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(-net.cost_dis, var_list=dis_var))
+
+    """
+    net.set_cost_gen(tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=net.get_output('gen_dis'), labels=tf.ones_like(net.get_output('gen_dis')))))
+    net.set_optimizer_gen(tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(net.cost_gen, var_list=gen_var))
+
+    dis_cost = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=net.get_output('real_dis'), labels=tf.ones_like(net.get_output('real_dis')))) + tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=net.get_output('gen_dis'),labels=tf.zeros_like(net.get_output('gen_dis'))))
+    net.set_cost_dis(dis_cost)
+    net.set_optimizer_dis(tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(net.cost_dis, var_list=dis_var))
+    """
+
 
     init = tf.global_variables_initializer()
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:

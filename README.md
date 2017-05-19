@@ -1,7 +1,8 @@
 # neural_network_basic
 famous deep_learning code with tensorflow
 
-Implemented:
+Implemented
+
     CNN : {
             LeNet
     }
