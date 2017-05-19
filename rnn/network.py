@@ -269,18 +269,23 @@ class Network(object):
         self.opt = optimizer
 
     @rnn_layer
-    def rnn(self, input, n_hidden, n_layer, name, keep_prob = 1., time_major = False):
-        cell = tf.contrib.rnn.BasicRNNCell(n_hidden)
-        cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=keep_prob)
-        # 다중 레이어 구성을 다음과 같이 아주 간단하게 만들 수 있습니다.
-        if n_layer > 1:
-            cell = tf.contrib.rnn.MultiRNNCell([cell] * n_layer)
+    def rnn(self, input, n_hidden, n_layer, name, keep_prob = 1., time_major = False, only_last = False):
+        state = None
+        if isinstance(input, list):
+            state = input[1]
+            input = input[0]
 
-        # tf.nn.dynamic_rnn 함수를 이용해 순환 신경망을 만듭니다.
-        outputs, states = tf.nn.dynamic_rnn(cell, input, dtype=tf.float32, time_major=time_major)
+        with tf.variable_scope(self.name + name) as scope:
+            cell = tf.contrib.rnn.BasicRNNCell(n_hidden)
+            cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=keep_prob)
+            # 다중 레이어 구성을 다음과 같이 아주 간단하게 만들 수 있습니다.
+            if n_layer > 1:
+                cell = tf.contrib.rnn.MultiRNNCell([cell] * n_layer)
 
-        #return outputs[-1], states
-        return outputs[:,-1], states
+            # tf.nn.dynamic_rnn 함수를 이용해 순환 신경망을 만듭니다.
+            outputs, states = tf.nn.dynamic_rnn(cell, input,initial_state=state, dtype=tf.float32, time_major=time_major)
 
-
-
+            if only_last:
+                return outputs[:,-1], states
+            else:
+                return outputs, states

@@ -84,7 +84,7 @@ class counting_RNN(Network):
         (self.feed('data')
          #.transpose([1,0,2], name='data_trans')
          #.rnn(n_hidden, n_layer= 1, name='rnn', time_major=True)
-         .rnn(n_hidden, n_layer=3, name='rnn')
+         .rnn(n_hidden, n_layer=3, name='rnn', only_last=True)
          .fc(n_classes, name='fc')
          .softmax(name='score'))
 
