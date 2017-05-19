@@ -7,7 +7,8 @@ Implemented:
     }
 
     RNN : {
-
+            Basic RNN (Number counting),
+            simple seq2seq
     }
 
     GAN : {
