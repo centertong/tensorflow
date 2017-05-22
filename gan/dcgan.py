@@ -1,8 +1,8 @@
 import tensorflow as tf
 import numpy as np
 from gan.network import Network
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
+#import matplotlib.pyplot as plt
+#import matplotlib.gridspec as gridspec
 
 import os
 import cv2
@@ -10,13 +10,14 @@ import cv2
 z_dim = 200
 
 class DCGAN(Network):
-    def __init__(self, X_size, Y_size , trainable=True, name=None):
+    def __init__(self, X_size, Y_size , batch_size = 100, trainable=True, name=None):
         self.name = name
         self.inputs = []
         self.dataX = tf.placeholder(tf.float32, shape = [None] + X_size)
         self.dataZ = tf.placeholder(tf.float32, shape = [None] + Y_size)
         self.layers = {'dataX':self.dataX, 'dataZ':self.dataZ}
         self.trainable = trainable
+        self.batch_size = batch_size
         self.setup()
         self.saver = tf.train.Saver()
 
@@ -104,6 +105,7 @@ d_steps = 1
 def sample_z(m, n):
     return np.random.uniform(-1., 1., size=[m, n])
 
+"""
 def plot(samples):
     fig = plt.figure(figsize=(4, 4))
     gs = gridspec.GridSpec(4, 4)
@@ -118,12 +120,13 @@ def plot(samples):
         plt.imshow(sample, cmap='Greys_r')
 
     return fig
+"""
 
 
 def train(net, sess):
     sess.run(init)
-    if os.path.exists("../learn_param/dcgan.ckpt.meta"):
-        net.load("../learn_param/dcgan.ckpt", sess, True)
+    if os.path.exists("../learn_param/dcgan2.ckpt.meta"):
+        net.load("../learn_param/dcgan2.ckpt", sess, True)
 
     step = 0
     i = 0
@@ -153,18 +156,18 @@ def train(net, sess):
             #tmp_sample = sample_z(16, 64)
 
             samples = sess.run(net.get_output('gen_prob'), feed_dict={net.dataZ: sample_z(16, z_dim)})
-            fig = plot(samples)
-            plt.savefig('../test/test_{}.png'
-                        .format(str(i).zfill(3)), bbox_inches='tight')
-            i += 1
-            plt.close(fig)
+            #fig = plot(samples)
+            #plt.savefig('../test/test_{}.png'
+            #            .format(str(i).zfill(3)), bbox_inches='tight')
+            #i += 1
+            #plt.close(fig)
 
 
     save_path = net.saver.save(sess, "../learn_param/dcgan.ckpt")
     print("Model saved infile : {}".format(save_path))
 
 if __name__ == '__main__':
-    net = DCGAN(X_size=[64,64,3], Y_size=[z_dim], name='dcgan')
+    net = DCGAN(X_size=[64,64,3], Y_size=[z_dim], batch_size=batch_size, name='dcgan')
 
     gen_var = net.get_variables('gen_deconv1') + net.get_variables('gen_deconv2') + net.get_variables('gen_deconv3') + net.get_variables('gen_deconv4') + net.get_variables('gen_deconv5')
     dis_var = net.get_variables('dis_prob') + net.get_variables('dis_conv1') + net.get_variables('dis_conv2') + net.get_variables('dis_conv3') + net.get_variables('dis_conv4')

@@ -28,11 +28,12 @@ def layer(op):
 
 
 class Network(object):
-    def __init__(self, inputs, trainable=True, name=None):
+    def __init__(self, inputs, batch_size = 100, trainable=True, name=None):
         self.name = name
         self.inputs = []
         self.layers = dict(inputs)
         self.trainable = trainable
+        self.batch_size = batch_size
         self.setup()
         self.saver = tf.train.Saver()
 
@@ -125,7 +126,7 @@ class Network(object):
     @layer
     def deconv(self, input, k_h, k_w, c_o, s_h, s_w, name, relu=True, padding=DEFAULT_PADDING,
              trainable=True, reuse = False):
-        c_n = -1
+        c_n = self.batch_size
         c_h = input.get_shape().as_list()[1] * s_h
         c_w = input.get_shape().as_list()[2] * s_w
         c_i = input.get_shape().as_list()[-1]
