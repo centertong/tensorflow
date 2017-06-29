@@ -6,22 +6,37 @@ import matplotlib.gridspec as gridspec
 
 
 class mnist_gan(Network):
-    def __init__(self, X_size, Y_size , trainable=True, name=None):
+    def __init__(self, X_size, Y_size , Z_size, trainable=True, name=None):
         self.name = name
         self.inputs = []
-        self.data = tf.placeholder(tf.float32, shape = [None] + X_size)
-        self.target = tf.placeholder(tf.float32, shape = [None] + Y_size)
-        self.layers = {'data':self.data, 'target':self.target}
+        self.data = tf.placeholder(tf.float32, shape=[None] + X_size)
+        self.target = tf.placeholder(tf.float32, shape=[None] + Y_size)
+        self.classification = tf.placeholder(tf.float32, shape=[None] + Z_size)
+
+        self.layers = {'data': self.data, 'target': self.target, 'class': self.classification}
         self.trainable = trainable
         self.setup()
         self.saver = tf.train.Saver()
 
     def setup(self):
+
         #generator
-        (self.feed('target')
+        (self.feed('target', 'class')
+         .concat(axis=1, name='concat_noise')
          .fc(128, name='gen_fc')
          .fc(784, name='gen_log_prob', relu=False)
          .sigmoid(name='gen_prob'))
+
+        # classifier
+        (self.feed('data')
+         .fc(128, name='cls_fc')
+         .fc(10, name='cls_prob')
+         .rename(name='real_cls'))
+
+        (self.feed('gen_prob')
+         .fc(128, name='cls_fc', reuse=True)
+         .fc(10, name='cls_prob', reuse=True)
+         .rename(name='gen_cls'))
 
         #discriminator
         (self.feed('data')
@@ -77,28 +92,28 @@ def train(net, sess):
     while step < training_iters:
         D_loss_curr = None
         for _ in range(d_steps):
-            X_mb, _ = mnist.train.next_batch(batch_size)
+            X_mb, Y_mb = mnist.train.next_batch(batch_size)
             z_mb = sample_z(batch_size, 64)
 
-            _, D_loss_curr = sess.run(
-                [net.opt_dis, net.cost_dis],
-                feed_dict={net.data: X_mb, net.target: z_mb}
+            _, _, D_loss_curr = sess.run(
+                [cls_opt_real, net.opt_dis, net.cost_dis],
+                feed_dict={net.data: X_mb, net.target: z_mb, net.classification: Y_mb}
             )
 
-        X_mb, _ = mnist.train.next_batch(batch_size)
+        X_mb, Y_mb = mnist.train.next_batch(batch_size)
         z_mb = sample_z(batch_size, 64)
 
         _, G_loss_curr = sess.run(
             [net.opt_gen, net.cost_gen],
-            feed_dict={net.data: X_mb, net.target: sample_z(batch_size, 64)}
+            feed_dict={net.data: X_mb, net.target: z_mb, net.classification: Y_mb}
         )
 
         if step % 1000 == 0:
             print('Iter: {}; D_loss: {:.4}; G_loss: {:.4}'
                   .format(step, D_loss_curr, G_loss_curr))
             #tmp_sample = sample_z(16, 64)
-
-            samples = sess.run(net.get_output('gen_prob'), feed_dict={net.target: sample_z(16, 64)})
+            print(Y_mb[:16])
+            samples = sess.run(net.get_output('gen_prob'), feed_dict={net.target: sample_z(16, 64), net.classification: Y_mb[:16]})
             fig = plot(samples)
             plt.savefig('../test/test_{}.png'
                         .format(str(i).zfill(3)), bbox_inches='tight')
@@ -110,11 +125,11 @@ def train(net, sess):
     print("Model saved infile : {}".format(save_path))
 
 if __name__ == '__main__':
-    net = mnist_gan(X_size=[784], Y_size=[64], name='mnist')
+    net = mnist_gan(X_size=[784], Y_size=[64], Z_size=[10], name='mnist')
 
     gen_var = net.get_variables('gen_fc') + net.get_variables('gen_log_prob')
     dis_var = net.get_variables('dis_fc') + net.get_variables('dis_prob')
-
+    cls_var = net.get_variables('cls_fc') + net.get_variables('cls_prob')
 
     # GAN cost function 정의 시 주의사항 : network에서 마지막 layer에 Sigmoid 유무를 잘 확인하자.
     # 1,2 는 둘다 Sigmoid가 필요
@@ -134,13 +149,19 @@ if __name__ == '__main__':
     net.set_optimizer_dis(tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(-net.cost_dis, var_list=dis_var))
     """
 
-    net.set_cost_gen(tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=net.get_output('gen_dis'), labels=tf.ones_like(net.get_output('gen_dis')))))
+    cls_cost_real = tf.reduce_mean(
+        tf.nn.softmax_cross_entropy_with_logits(logits=net.get_output('real_cls'), labels=net.classification))
+    cls_cost_gen = tf.reduce_mean(
+        tf.nn.softmax_cross_entropy_with_logits(logits=net.get_output('gen_cls'), labels=net.classification))
+
+    net.set_cost_gen(tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=net.get_output('gen_dis'), labels=tf.ones_like(net.get_output('gen_dis')))) + cls_cost_gen)
     net.set_optimizer_gen(tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(net.cost_gen, var_list=gen_var))
 
     dis_cost = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=net.get_output('real_dis'), labels=tf.ones_like(net.get_output('real_dis')))) + tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=net.get_output('gen_dis'),labels=tf.zeros_like(net.get_output('gen_dis'))))
     net.set_cost_dis(dis_cost)
     net.set_optimizer_dis(tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(net.cost_dis, var_list=dis_var))
 
+    cls_opt_real = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cls_cost_real, var_list=cls_var)
 
     init = tf.global_variables_initializer()
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
