@@ -90,10 +90,13 @@ class Network(object):
         assert padding in ('SAME', 'VALID')
 
     def get_variables(self, name):
+        """
         with tf.variable_scope(self.name + name, reuse=True) as scope:
             kernel = tf.get_variable('weights')
             biases = tf.get_variable('biases')
-        return [kernel, biases]
+            return [kernel, biases]
+        """
+        return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name + name)
 
     @layer
     def conv(self, input, k_h, k_w, c_o, s_h, s_w, name, relu=True, padding=DEFAULT_PADDING,
@@ -118,6 +121,7 @@ class Network(object):
                 kernel_groups = tf.split(3, group, kernel)
                 output_groups = [convolve(i, k) for i, k in zip(input_groups, kernel_groups)]
                 conv = tf.concat(3, output_groups)
+            print(conv)
             if relu:
                 bias = tf.nn.bias_add(conv, biases)
                 return tf.nn.relu(bias, name=scope.name)
@@ -140,7 +144,7 @@ class Network(object):
             biases = self.make_var('biases', [c_o], init_biases, trainable)
 
             deconv = deconvolve(input, kernel)
-
+            print(deconv)
             if relu:
                 bias = tf.nn.bias_add(deconv, biases)
                 return tf.nn.relu(bias, name=scope.name)
@@ -217,6 +221,18 @@ class Network(object):
         return normed
 
     @layer
+    def batch_norm(self, input, name, epsilon=1e-5, momentum=0.9, reuse=False, train=True):
+        with tf.variable_scope(self.name + name, reuse=reuse) as scope:
+            return tf.contrib.layers.batch_norm(input,
+                                                decay=momentum,
+                                                updates_collections=None,
+                                                epsilon=epsilon,
+                                                scale=True,
+                                                is_training=train,
+                                                scope=self.name + name)
+
+
+    @layer
     def lrn(self, input, radius, alpha, beta, name, bias=1.0):
         return tf.nn.local_response_normalization(input,
                                                   depth_radius=radius,
@@ -251,9 +267,6 @@ class Network(object):
 
             weights = self.make_var('weights', [dim, num_out], init_weights, trainable)
             biases = self.make_var('biases', [num_out], init_biases, trainable)
-
-            print(weights)
-            print(biases)
 
             op = tf.nn.relu_layer if relu else tf.nn.xw_plus_b
             fc = op(feed_in, weights, biases, name=scope.name)

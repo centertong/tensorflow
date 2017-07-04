@@ -1,9 +1,10 @@
 import tensorflow as tf
 import numpy as np
 from gan.network import Network
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
+#import matplotlib.pyplot as plt
+#import matplotlib.gridspec as gridspec
 
+import cv2
 
 class mnist_gan(Network):
     def __init__(self, X_size, Y_size , trainable=True, name=None):
@@ -44,27 +45,16 @@ mnist = input_data.read_data_sets("../dataset/MNIST/", one_hot=True)
 
 learning_rate = 0.001
 training_iters = 100000
-batch_size = 32
+batch_size = 16
 display_step = 10
 d_steps = 3
 
 def sample_z(m, n):
     return np.random.uniform(-1., 1., size=[m, n])
 
-def plot(samples):
-    fig = plt.figure(figsize=(4, 4))
-    gs = gridspec.GridSpec(4, 4)
-    gs.update(wspace=0.05, hspace=0.05)
-
+def plot(samples, step):
     for i, sample in enumerate(samples):
-        ax = plt.subplot(gs[i])
-        plt.axis('off')
-        ax.set_xticklabels([])
-        ax.set_yticklabels([])
-        ax.set_aspect('equal')
-        plt.imshow(sample.reshape(28, 28), cmap='Greys_r')
-
-    return fig
+        cv2.imwrite('/home/tongth/git/tensorflow/test/' + str(step) + '_' + str(i) + '.png', sample.reshape(28,28) * 255)
 
 
 def train(net, sess):
@@ -86,7 +76,7 @@ def train(net, sess):
             )
 
         X_mb, _ = mnist.train.next_batch(batch_size)
-        z_mb = sample_z(batch_size, 64)
+        #z_mb = sample_z(batch_size, 64)
 
         _, G_loss_curr = sess.run(
             [net.opt_gen, net.cost_gen],
@@ -99,11 +89,7 @@ def train(net, sess):
             #tmp_sample = sample_z(16, 64)
 
             samples = sess.run(net.get_output('gen_prob'), feed_dict={net.target: sample_z(16, 64)})
-            fig = plot(samples)
-            plt.savefig('../test/test_{}.png'
-                        .format(str(i).zfill(3)), bbox_inches='tight')
-            i += 1
-            plt.close(fig)
+            plot(samples, step)
 
         step += 1
     save_path = net.saver.save(sess, "../learn_param/mnist_gan.ckpt")
