@@ -72,10 +72,10 @@ class Seq2Seq(Network):
 
     def setup(self):
         (self.feed('data_inc')
-         .rnn(n_hidden, n_layer=3, name='incoder'))
+         .rnn(n_hidden, n_layer=1, name='incoder'))
 
         (self.feed('data_dec')
-         .rnn(n_hidden, n_layer=3, name='decoder', initial_state=self.get_output('incoder_s')))
+         .rnn(n_hidden, n_layer=1, name='decoder', initial_state=self.get_output('incoder_s')))
 
         (self.feed('decoder')
          .shape(name='decoder_shape'))
@@ -133,51 +133,51 @@ if __name__ == '__main__':
 
 
 
-#########
-# 공부!!
-######
-# 시퀀스 데이터를 받아 다음 결과를 예측하고 디코딩하는 함수
-def decode(seq_data):
-    prediction = tf.argmax(net.get_output('seq'), 2)
+        #########
+        # 공부!!
+        ######
+        # 시퀀스 데이터를 받아 다음 결과를 예측하고 디코딩하는 함수
+        def decode(seq_data):
+            prediction = tf.argmax(net.get_output('seq'), 2)
 
-    input_batch, output_batch, target_batch = make_batch([seq_data])
+            input_batch, output_batch, target_batch = make_batch([seq_data])
 
-    result = sess.run(prediction,
-                      feed_dict={net.data_inc: input_batch,
-                                 net.data_dec: output_batch,
-                                 net.target: target_batch})
+            result = sess.run(prediction,
+                              feed_dict={net.data_inc: input_batch,
+                                         net.data_dec: output_batch,
+                                         net.target: target_batch})
 
-    decode_seq = [[char_arr[i] for i in dec] for dec in result][0]
+            decode_seq = [[char_arr[i] for i in dec] for dec in result][0]
 
-    return decode_seq
-
-
-# 한 번에 전체를 예측하고 E 이후의 글자를 잘라 단어를 완성
-def decode_at_once(seq_data):
-    seq = decode(seq_data)
-    end = seq.index('E')
-    seq = ''.join(seq[:end])
-
-    return seq
+            return decode_seq
 
 
-# 시퀀스 데이터를 받아 다음 한글자를 예측하고,
-# 종료 심볼인 E 가 나올때까지 점진적으로 예측하여 최종 결과를 만드는 함수
-def decode_step_by_step(seq_data):
-    decode_seq = ''
-    current_seq = ''
+        # 한 번에 전체를 예측하고 E 이후의 글자를 잘라 단어를 완성
+        def decode_at_once(seq_data):
+            seq = decode(seq_data)
+            end = seq.index('E')
+            seq = ''.join(seq[:end])
 
-    while current_seq != 'E':
-        decode_seq = decode(seq_data)
-        seq_data = [seq_data[0], ''.join(decode_seq)]
-        current_seq = decode_seq[-1]
-
-    return decode_seq
-
-# 결과를 모르므로 빈 시퀀스 값인 P로 값을 채웁니다.
-seq_data2 = ['word', 'PPPP']
-print('word ->', decode_at_once(seq_data2))
+            return seq
 
 
-seq_data3 = ['word', '']
-print('word ->', decode_step_by_step(seq_data3))
+        # 시퀀스 데이터를 받아 다음 한글자를 예측하고,
+        # 종료 심볼인 E 가 나올때까지 점진적으로 예측하여 최종 결과를 만드는 함수
+        def decode_step_by_step(seq_data):
+            decode_seq = ''
+            current_seq = ''
+
+            while current_seq != 'E':
+                decode_seq = decode(seq_data)
+                seq_data = [seq_data[0], ''.join(decode_seq)]
+                current_seq = decode_seq[-1]
+
+            return decode_seq
+
+        # 결과를 모르므로 빈 시퀀스 값인 P로 값을 채웁니다.
+        seq_data2 = ['word', 'PPPP']
+        print('word ->', decode_at_once(seq_data2))
+
+
+        seq_data3 = ['word', '']
+        print('word ->', decode_step_by_step(seq_data3))
