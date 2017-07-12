@@ -235,12 +235,16 @@ class Network(object):
 
     @layer
     def reshape(self, input, shape, name):
-        return tf.reshape(input, shape, name=name)
+        return tf.reshape(input, [tf.shape(input)[0]]+ shape, name=name)
 
     @layer
     def add(self, input, name):
         assert len(input) == 2
         return tf.add(input[0], input[1], name=name)
+
+    @layer
+    def pad(self, input, shape, name):
+        return tf.pad(input, shape, name=name)
 
     @layer
     def mul(self, input, num_out, name):
